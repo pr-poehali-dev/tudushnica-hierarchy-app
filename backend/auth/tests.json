@@ -1,0 +1,28 @@
+{
+  "tests": [
+    {
+      "name": "Login with valid email",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "email": "test@example.com"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "user_id": 1,
+        "email": "test@example.com"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Login with invalid email",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "email": "invalid-email"
+      },
+      "expectedStatus": 400,
+      "bodyMatcher": "partial"
+    }
+  ]
+}

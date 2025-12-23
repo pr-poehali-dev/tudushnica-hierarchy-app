@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
+import { Card } from '@/components/ui/card';
 
 interface Task {
   id: string;
@@ -14,17 +15,45 @@ interface Task {
   emoji: string;
 }
 
+interface User {
+  id: number;
+  email: string;
+}
+
 const EMOJI_POOL = ['🌟', '🎨', '🚀', '🌈', '✨', '🎭', '🦄', '🌸', '🎪', '🎯'];
 
 const getRandomEmoji = () => EMOJI_POOL[Math.floor(Math.random() * EMOJI_POOL.length)];
 
 const STORAGE_KEY = 'creative-todos';
+const USER_KEY = 'creative-user';
+
+const AUTH_URL = 'https://functions.poehali.dev/6482146f-f986-4fab-b9b9-c363f3e5c004';
+const TASKS_URL = 'https://functions.poehali.dev/8417072c-5f63-4a6c-8b8b-55e45c075bfe';
 
 const Index = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskText, setNewTaskText] = useState('');
+  const [user, setUser] = useState<User | null>(null);
+  const [email, setEmail] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
+    const savedUser = localStorage.getItem(USER_KEY);
+    if (savedUser) {
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
+        loadTasksFromServer(parsedUser.id);
+      } catch (e) {
+        console.error('Failed to load user:', e);
+        loadLocalTasks();
+      }
+    } else {
+      loadLocalTasks();
+    }
+  }, []);
+
+  const loadLocalTasks = () => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
@@ -54,11 +83,98 @@ const Index = () => {
       ];
       setTasks(initialTasks);
     }
-  }, []);
+  };
+
+  const loadTasksFromServer = async (userId: number) => {
+    try {
+      const response = await fetch(TASKS_URL, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Id': userId.toString()
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.tasks && data.tasks.length > 0) {
+          setTasks(data.tasks);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data.tasks));
+        } else {
+          loadLocalTasks();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load tasks from server:', error);
+      loadLocalTasks();
+    }
+  };
+
+  const saveTasksToServer = async (updatedTasks: Task[]) => {
+    if (!user) return;
+    
+    try {
+      await fetch(TASKS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Id': user.id.toString()
+        },
+        body: JSON.stringify({ tasks: updatedTasks })
+      });
+    } catch (error) {
+      console.error('Failed to save tasks to server:', error);
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-  }, [tasks]);
+    if (user && tasks.length > 0) {
+      saveTasksToServer(tasks);
+    }
+  }, [tasks, user]);
+
+  const handleLogin = async () => {
+    if (!email.trim()) {
+      toast.error('Введите email! 📧');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(AUTH_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email: email.toLowerCase().trim() })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        const userData = { id: data.user_id, email: data.email };
+        setUser(userData);
+        localStorage.setItem(USER_KEY, JSON.stringify(userData));
+        toast.success('Добро пожаловать! 🎉');
+        
+        await loadTasksFromServer(data.user_id);
+      } else {
+        toast.error(data.error || 'Ошибка входа');
+      }
+    } catch (error) {
+      toast.error('Не удалось подключиться к серверу');
+      console.error('Login error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem(USER_KEY);
+    toast.success('Вы вышли из аккаунта 👋');
+  };
 
   const addTask = (parentPath: number[] | null = null) => {
     if (!newTaskText.trim()) {
@@ -271,6 +387,54 @@ const Index = () => {
     return acc + countAll(task);
   }, 0);
 
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-accent/20 p-4 flex items-center justify-center">
+        <Card className="max-w-md w-full p-8 space-y-6 animate-scale-in border-2 border-primary shadow-2xl">
+          <div className="text-center space-y-4">
+            <div className="text-7xl">🔐</div>
+            <h1 className="text-5xl font-bold text-primary">Вход</h1>
+            <p className="text-lg text-muted-foreground">Введите email для входа или регистрации</p>
+          </div>
+          
+          <div className="space-y-4">
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+              placeholder="your@email.com"
+              className="text-lg border-2 rounded-2xl px-6 py-6"
+              disabled={isLoading}
+            />
+            <Button
+              onClick={handleLogin}
+              size="lg"
+              className="w-full rounded-2xl text-lg font-semibold shadow-lg hover:shadow-xl transition-all"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Icon name="Loader2" size={24} className="mr-2 animate-spin" />
+                  Входим...
+                </>
+              ) : (
+                <>
+                  <Icon name="LogIn" size={24} className="mr-2" />
+                  Войти
+                </>
+              )}
+            </Button>
+          </div>
+
+          <div className="text-center text-sm text-muted-foreground bg-muted/50 p-4 rounded-xl">
+            💡 Ваши задачи будут синхронизироваться между устройствами
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-accent/20 p-4">
       <div className="max-w-2xl mx-auto py-8 space-y-6">
@@ -278,14 +442,23 @@ const Index = () => {
           <h1 className="text-6xl font-bold text-primary">Волшебный Список Дел</h1>
           <p className="text-xl text-muted-foreground">Бесконечно вложенные задачи! 🌳</p>
           
-          <div className="flex justify-center gap-4 text-sm mt-4">
+          <div className="flex justify-center gap-4 text-sm mt-4 flex-wrap">
             <div className="bg-card px-6 py-3 rounded-full border-2 border-primary shadow-lg">
               <span className="font-semibold text-primary">{completedCount}</span>
               <span className="text-muted-foreground"> / {totalCount} выполнено</span>
             </div>
-            <div className="bg-card px-6 py-3 rounded-full border-2 border-accent shadow-lg">
-              <span className="text-2xl">📱 Офлайн режим активен!</span>
+            <div className="bg-card px-6 py-3 rounded-full border-2 border-secondary shadow-lg">
+              <span className="text-sm">👤 {user.email}</span>
             </div>
+            <Button
+              onClick={handleLogout}
+              size="sm"
+              variant="outline"
+              className="rounded-full border-2"
+            >
+              <Icon name="LogOut" size={16} className="mr-2" />
+              Выйти
+            </Button>
           </div>
         </div>
 

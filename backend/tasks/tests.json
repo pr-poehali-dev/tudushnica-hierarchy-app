@@ -1,0 +1,36 @@
+{
+  "tests": [
+    {
+      "name": "Get tasks without auth",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 401,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Save tasks",
+      "method": "POST",
+      "path": "/",
+      "headers": {
+        "X-User-Id": "1"
+      },
+      "body": {
+        "tasks": [
+          {
+            "id": "1",
+            "text": "Test task",
+            "completed": false,
+            "subtasks": [],
+            "isExpanded": false,
+            "emoji": "🎨"
+          }
+        ]
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
