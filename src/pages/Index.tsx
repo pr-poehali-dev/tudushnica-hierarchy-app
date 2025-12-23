@@ -1,11 +1,326 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import Icon from '@/components/ui/icon';
+import { toast } from 'sonner';
+
+interface Task {
+  id: string;
+  text: string;
+  completed: boolean;
+  subtasks: Task[];
+  isExpanded: boolean;
+  emoji: string;
+}
+
+const EMOJI_POOL = ['🌟', '🎨', '🚀', '🌈', '✨', '🎭', '🦄', '🌸', '🎪', '🎯'];
+
+const getRandomEmoji = () => EMOJI_POOL[Math.floor(Math.random() * EMOJI_POOL.length)];
+
+const STORAGE_KEY = 'creative-todos';
 
 const Index = () => {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [newTaskText, setNewTaskText] = useState('');
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        setTasks(JSON.parse(saved));
+      } catch (e) {
+        console.error('Failed to load tasks:', e);
+      }
+    } else {
+      const initialTasks: Task[] = [
+        {
+          id: '1',
+          text: 'Создать проект',
+          completed: true,
+          emoji: '🚀',
+          isExpanded: true,
+          subtasks: [
+            {
+              id: '1-1',
+              text: 'Придумать идею',
+              completed: true,
+              emoji: '💡',
+              isExpanded: false,
+              subtasks: []
+            }
+          ]
+        }
+      ];
+      setTasks(initialTasks);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+  }, [tasks]);
+
+  const addTask = (parentPath: number[] | null = null) => {
+    if (!newTaskText.trim()) {
+      toast.error('Введите текст задачи! 📝');
+      return;
+    }
+
+    const newTask: Task = {
+      id: Date.now().toString(),
+      text: newTaskText,
+      completed: false,
+      subtasks: [],
+      isExpanded: false,
+      emoji: getRandomEmoji()
+    };
+
+    if (parentPath === null) {
+      setTasks([...tasks, newTask]);
+      toast.success('Задача добавлена! ' + newTask.emoji);
+    } else {
+      const newTasks = [...tasks];
+      let current: Task[] = newTasks;
+      
+      for (let i = 0; i < parentPath.length - 1; i++) {
+        current = current[parentPath[i]].subtasks;
+      }
+      
+      current[parentPath[parentPath.length - 1]].subtasks.push(newTask);
+      current[parentPath[parentPath.length - 1]].isExpanded = true;
+      setTasks(newTasks);
+      toast.success('Подзадача добавлена! ' + newTask.emoji);
+    }
+
+    setNewTaskText('');
+  };
+
+  const toggleTask = (path: number[]) => {
+    const newTasks = [...tasks];
+    let current: Task[] = newTasks;
+    
+    for (let i = 0; i < path.length - 1; i++) {
+      current = current[path[i]].subtasks;
+    }
+    
+    current[path[path.length - 1]].completed = !current[path[path.length - 1]].completed;
+    setTasks(newTasks);
+  };
+
+  const toggleExpanded = (path: number[]) => {
+    const newTasks = [...tasks];
+    let current: Task[] = newTasks;
+    
+    for (let i = 0; i < path.length - 1; i++) {
+      current = current[path[i]].subtasks;
+    }
+    
+    current[path[path.length - 1]].isExpanded = !current[path[path.length - 1]].isExpanded;
+    setTasks(newTasks);
+  };
+
+  const deleteTask = (path: number[]) => {
+    const newTasks = [...tasks];
+    
+    if (path.length === 1) {
+      newTasks.splice(path[0], 1);
+    } else {
+      let current: Task[] = newTasks;
+      for (let i = 0; i < path.length - 2; i++) {
+        current = current[path[i]].subtasks;
+      }
+      current[path[path.length - 2]].subtasks.splice(path[path.length - 1], 1);
+    }
+    
+    setTasks(newTasks);
+    toast.success('Задача удалена! 🗑️');
+  };
+
+  const TaskItem = ({ task, path }: { task: Task; path: number[] }) => {
+    const [isAdding, setIsAdding] = useState(false);
+    const [subtaskText, setSubtaskText] = useState('');
+
+    const handleAddSubtask = () => {
+      if (!subtaskText.trim()) return;
+
+      const newTask: Task = {
+        id: Date.now().toString(),
+        text: subtaskText,
+        completed: false,
+        subtasks: [],
+        isExpanded: false,
+        emoji: getRandomEmoji()
+      };
+
+      const newTasks = [...tasks];
+      let current: Task[] = newTasks;
+      
+      for (let i = 0; i < path.length - 1; i++) {
+        current = current[path[i]].subtasks;
+      }
+      
+      const targetTask = current[path[path.length - 1]];
+      targetTask.subtasks.push(newTask);
+      targetTask.isExpanded = true;
+      
+      setTasks(newTasks);
+      setSubtaskText('');
+      setIsAdding(false);
+      toast.success('Подзадача добавлена! ' + newTask.emoji);
+    };
+
+    return (
+      <div className="animate-fade-in">
+        <div className={`group flex items-center gap-2 p-3 rounded-2xl border-2 transition-all duration-300 ${
+          task.completed 
+            ? 'bg-muted/50 border-muted' 
+            : 'bg-card border-border hover:border-primary hover:shadow-lg'
+        }`}>
+          <button
+            onClick={() => toggleExpanded(path)}
+            className={`text-2xl transition-transform duration-300 ${
+              task.isExpanded ? 'rotate-90' : ''
+            } ${task.subtasks.length === 0 ? 'opacity-0 pointer-events-none' : 'hover:scale-125'}`}
+          >
+            ▶️
+          </button>
+
+          <span className="text-3xl animate-wiggle">{task.emoji}</span>
+
+          <Checkbox
+            checked={task.completed}
+            onCheckedChange={() => toggleTask(path)}
+            className="h-6 w-6 border-2"
+          />
+
+          <span className={`flex-1 text-lg ${task.completed ? 'line-through opacity-50' : ''}`}>
+            {task.text}
+          </span>
+
+          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setIsAdding(!isAdding)}
+              className="h-8 w-8 p-0 rounded-full hover:bg-primary hover:text-primary-foreground"
+            >
+              <Icon name="Plus" size={18} />
+            </Button>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => deleteTask(path)}
+              className="h-8 w-8 p-0 rounded-full hover:bg-destructive hover:text-destructive-foreground"
+            >
+              <Icon name="Trash2" size={18} />
+            </Button>
+          </div>
+        </div>
+
+        {isAdding && (
+          <div className="ml-12 mt-2 flex gap-2 animate-scale-in">
+            <Input
+              value={subtaskText}
+              onChange={(e) => setSubtaskText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddSubtask()}
+              placeholder="Новая подзадача..."
+              className="flex-1 border-2 rounded-xl"
+              autoFocus
+            />
+            <Button
+              onClick={handleAddSubtask}
+              size="sm"
+              className="rounded-xl"
+            >
+              <Icon name="Check" size={18} />
+            </Button>
+            <Button
+              onClick={() => setIsAdding(false)}
+              size="sm"
+              variant="outline"
+              className="rounded-xl"
+            >
+              <Icon name="X" size={18} />
+            </Button>
+          </div>
+        )}
+
+        {task.isExpanded && task.subtasks.length > 0 && (
+          <div className="ml-12 mt-3 space-y-2 border-l-4 border-primary/30 pl-4">
+            {task.subtasks.map((subtask, index) => (
+              <TaskItem key={subtask.id} task={subtask} path={[...path, index]} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const completedCount = tasks.reduce((acc, task) => {
+    const countCompleted = (t: Task): number => {
+      return (t.completed ? 1 : 0) + t.subtasks.reduce((sum, st) => sum + countCompleted(st), 0);
+    };
+    return acc + countCompleted(task);
+  }, 0);
+
+  const totalCount = tasks.reduce((acc, task) => {
+    const countAll = (t: Task): number => {
+      return 1 + t.subtasks.reduce((sum, st) => sum + countAll(st), 0);
+    };
+    return acc + countAll(task);
+  }, 0);
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4 color-black text-black">Добро пожаловать!</h1>
-        <p className="text-xl text-gray-600">тут будет отображаться ваш проект</p>
+    <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-accent/20 p-4">
+      <div className="max-w-2xl mx-auto py-8 space-y-6">
+        <div className="text-center space-y-2 animate-scale-in">
+          <h1 className="text-6xl font-bold text-primary">Волшебный Список Дел</h1>
+          <p className="text-xl text-muted-foreground">Бесконечно вложенные задачи! 🌳</p>
+          
+          <div className="flex justify-center gap-4 text-sm mt-4">
+            <div className="bg-card px-6 py-3 rounded-full border-2 border-primary shadow-lg">
+              <span className="font-semibold text-primary">{completedCount}</span>
+              <span className="text-muted-foreground"> / {totalCount} выполнено</span>
+            </div>
+            <div className="bg-card px-6 py-3 rounded-full border-2 border-accent shadow-lg">
+              <span className="text-2xl">📱 Офлайн режим активен!</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-card p-6 rounded-3xl border-2 border-primary shadow-2xl animate-scale-in">
+          <div className="flex gap-2">
+            <Input
+              value={newTaskText}
+              onChange={(e) => setNewTaskText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addTask()}
+              placeholder="Придумай новую задачу... ✨"
+              className="flex-1 text-lg border-2 rounded-2xl px-6 py-6"
+            />
+            <Button
+              onClick={() => addTask()}
+              size="lg"
+              className="rounded-2xl px-8 text-lg font-semibold shadow-lg hover:shadow-xl transition-all"
+            >
+              <Icon name="Plus" size={24} className="mr-2" />
+              Добавить
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {tasks.length === 0 ? (
+            <div className="text-center py-16 animate-fade-in">
+              <div className="text-8xl mb-4">🎨</div>
+              <p className="text-2xl text-muted-foreground font-medium">
+                Список пуст! Создай первую задачу
+              </p>
+            </div>
+          ) : (
+            tasks.map((task, index) => <TaskItem key={task.id} task={task} path={[index]} />)
+          )}
+        </div>
       </div>
     </div>
   );
